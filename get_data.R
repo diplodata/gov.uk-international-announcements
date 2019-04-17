@@ -10,7 +10,11 @@ queries = read_csv('gov.uk-query.csv')
 
 get_page_count = function(u){
   doc = xml2::read_html(u)
-  html_node(doc, '.gem-c-pagination__link-label') %>% html_text() %>% 
+  if(length(html_node(doc, '.gem-c-pagination__link-label')) > 0){
+    return(html_node(doc, '.gem-c-pagination__link-label') %>% html_text() %>% 
+             str_extract('[0-9]+$') %>% as.numeric())
+  }
+  html_node(doc, '.page-numbers') %>% html_text() %>% 
     str_extract('[0-9]+$') %>% as.numeric()
 }
 
@@ -26,21 +30,25 @@ dat = list()
 
 for(k in 1:nrow(queries)){
   u = queries$url[k]
-  message(queries$category[k])
+  set = queries$category[k]
+  message(set)
   N = get_page_count(u)
+  message('N = ', N)
+  if(is.na(N)) N = 1
   for(i in 1:N){
-    url = paste0(u, '&page=', i)
+    url = ifelse(N > 1, paste0(u, '&page=', i), u)
     dom0 = GET(url)
     dom = read_html(dom0)
     items = html_nodes(dom, '.document')
-    dat[[length(dat)+1]] = map_df(items, parse_item) %>% mutate(query = queries$category[i])
-    if(length(dat) %% 100){
+    if(length(items) == 0) items = html_nodes(dom, '.document-row')
+    if(length(items) > 0) dat[[paste(set,i)]] = map_df(items, parse_item) %>% mutate(query = queries$category[i])
+    if(N > 200 & length(dat) %% 100 == 0){
       message(i)
       save(dat, file = 'dat.Rdata')
     }
     Sys.sleep(.2)
   }
+  save(dat, file = 'dat.Rdata')
 }
 
-save(dat, file = 'dat.Rdata')
 message('complete')
